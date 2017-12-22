@@ -89,39 +89,42 @@ def _annotate_section(section, source):
     return new_dict
 
 
-class HistoryContainer(object):
+class BaseKey(object):
 
-    def __init__(self):
-        self.history = []
+    def __init__(self, value, source):
+        self._history = []
+        self._value = value
+        self._source = source
 
     def addToHistory(self, operation, value, source):
         item = HistoryItem(operation, value, source)
-        self.history.append(item)
+        self._history.append(item)
 
     def merge_history(self, other):
-        other.history.extend(other.history)
+        self._history.extend(other._history)
 
 
-class SectionKey(HistoryContainer):
+class SectionKey(BaseKey):
+
     def __init__(self, value, source):
-        super(SectionKey, self).__init__()
-
-        self.value = value
-        self.initial_value = value
-        self.ops = []
+        super(SectionKey, self).__init__(value, source)
         self.addToHistory("SET", value, source)
 
     @property
     def source(self):
-        return self.history[-1].source
+        return self._history[-1].source
+
+    @property
+    def value(self):
+        return self._value
 
     def unannotate(self):
         """Return the unannotated final value."""
 
-        return self.value
+        return self._value
 
     def setDirectory(self, value):
-        self.value = value
+        self._value = value
         self.addToHistory("DIRECTORY", value, self.source)
 
     def printAll(self, key, basedir, verbose):
@@ -132,12 +135,12 @@ class SectionKey(HistoryContainer):
             self.printTerse(basedir)
 
     def printKeyAndValue(self, key):
-        lines = self.value.splitlines()
+        lines = self._value.splitlines()
         if len(lines) <= 1:
             args = [key, "="]
-            if self.value:
+            if self._value:
                 args.append(" ")
-                args.append(self.value)
+                args.append(self._value)
             print_(*args, sep='')
         else:
             print_(key, "= ", lines[0], sep='')
@@ -146,13 +149,13 @@ class SectionKey(HistoryContainer):
 
     def printVerbose(self, basedir):
         print_()
-        for item in reversed(self.history):
+        for item in reversed(self._history):
             item.printAll(basedir)
         print_()
 
     def printTerse(self, basedir):
         toprint = []
-        history = copy.deepcopy(self.history)
+        history = copy.deepcopy(self._history)
         while history:
             next = history.pop()
             if next.operation in ["ADD", "REMOVE"]:
@@ -166,54 +169,44 @@ class SectionKey(HistoryContainer):
                 print_(line)
 
     def apply(self, other):
-        other.value = self.value
-        self.addToHistory("OVERRIDE", self.value, self.source)
+        other._value = self._value
+        self.addToHistory("OVERRIDE", self._value, self.source)
         other.merge_history(self)
         return other
 
     def __repr__(self):
         return "<SectionKey value=%s source=%s>" % (
-            " ".join(self.value.split('\n')), self.source)
+            " ".join(self._value.split('\n')), self.source)
 
 
-class PlusEq(HistoryContainer):
-
-    def __init__(self, value, source):
-        super(PlusEq, self).__init__()
-        self.value = value
-        self.source = source
+class PlusEq(BaseKey):
 
     def apply(self, other):
-        subvalues = other.value.split('\n') + self.value.split('\n')
-        other.value = "\n".join(subvalues)
-        self.addToHistory("ADD", self.value, self.source)
+        subvalues = other._value.split('\n') + self._value.split('\n')
+        other._value = "\n".join(subvalues)
         other.merge_history(self)
+        other.addToHistory("ADD", self._value, self._source)
         return other
 
 
-class MinusEq(HistoryContainer):
-
-    def __init__(self, value, source):
-        super(MinusEq, self).__init__()
-        self.value = value
-        self.source = source
+class MinusEq(BaseKey):
 
     def apply(self, other):
         subvalues = [
             v
-            for v in other.value.split('\n')
-            if v not in self.value.split('\n')
+            for v in other._value.split('\n')
+            if v not in self._value.split('\n')
         ]
-        other.value = "\n".join(subvalues)
-        self.addToHistory("REMOVE", self.value, self.source)
+        other._value = "\n".join(subvalues)
         other.merge_history(self)
+        other.addToHistory("REMOVE", self._value, self._source)
         return other
 
 
 class HistoryItem(object):
     def __init__(self, operation, value, source):
         self.operation = operation
-        self.value = value
+        self._value = value
         self.source = source
 
     def printShort(self, toprint, basedir):
@@ -226,9 +219,9 @@ class HistoryItem(object):
             toprint.append("-=  " + source)
 
     def printOperation(self):
-        lines = self.value.splitlines()
+        lines = self._value.splitlines()
         if len(lines) <= 1:
-            print_("  ", self.operation, "VALUE =", self.value)
+            print_("  ", self.operation, "VALUE =", self._value)
         else:
             print_("  ", self.operation, "VALUE =")
             for line in lines:
@@ -255,7 +248,7 @@ class HistoryItem(object):
 
     def __repr__(self):
         return "<HistoryItem operation=%s value=%s source=%s>" % (
-            self.operation, " ".join(self.value.split('\n')), self.source)
+            self.operation, " ".join(self._value.split('\n')), self.source)
 
 
 def _annotate(data, note):
@@ -1836,8 +1829,8 @@ def _open(base, filename, seen, dl_options, override, downloaded):
         return downloaded_files
 
     final_result = {}
-    for downloded_file in reversed(downloaded_files):
-        _update(final_result, downloded_file)
+    for downloaded in downloaded_files:
+        _update(final_result, downloaded)
     return final_result
 
 
@@ -1913,7 +1906,7 @@ def _update_section_keys(s1, s2):
     for key, v2 in s2.items():
         if key in s1:
             v1 = s1[key]
-            s1[key] = v1.apply(v2)
+            s1[key] = v2.apply(v1)
         else:
             s1[key] = v2
 
@@ -1922,10 +1915,7 @@ def _update(d1, d2):
         if section in d1:
             d1[section] = _update_section(d1[section], d2[section])
         else:
-            try:
-                d1[section] = d2[section]
-            except TypeError:
-                import pudb; pudb.set_trace()  # noqa
+            d1[section] = d2[section]
     return d1
 
 def _recipe(options):
