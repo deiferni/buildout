@@ -89,32 +89,40 @@ def _annotate_section(section, source):
     return new_dict
 
 
-class SectionKey(object):
-    def __init__(self, value, source):
-        self.source = source
+class HistoryContainer(object):
+
+    def __init__(self):
         self.history = []
+
+    def addToHistory(self, operation, value, source):
+        item = HistoryItem(operation, value, source)
+        self.history.append(item)
+
+    def merge_history(self, other):
+        other.history.extend(other.history)
+
+
+class SectionKey(HistoryContainer):
+    def __init__(self, value, source):
+        super(SectionKey, self).__init__()
+
         self.value = value
         self.initial_value = value
         self.ops = []
         self.addToHistory("SET", value, source)
 
-    # @property
-    # def source(self):
-    #     return self.history[-1].source
+    @property
+    def source(self):
+        return self.history[-1].source
 
     def unannotate(self):
         """Return the unannotated final value."""
-        return self.value
 
-        return sectionkey
+        return self.value
 
     def setDirectory(self, value):
         self.value = value
         self.addToHistory("DIRECTORY", value, self.source)
-
-    def addToHistory(self, operation, value, source):
-        item = HistoryItem(operation, value, source)
-        self.history.append(item)
 
     def printAll(self, key, basedir, verbose):
         self.printKeyAndValue(key)
@@ -162,27 +170,27 @@ class SectionKey(object):
             " ".join(self.value.split('\n')), self.source)
 
 
-class PlusEq(SectionKey):
+class PlusEq(HistoryContainer):
 
     def __init__(self, value, source):
+        super(PlusEq, self).__init__()
         self.value = value
         self.source = source
-        self.history = []
-
 
     def apply(self, other):
         subvalues = other.value.split('\n') + self.value.split('\n')
         other.value = "\n".join(subvalues)
+        self.addToHistory("ADD", self.value, self.source)
+        other.merge_history(self)
         return other
 
 
-class MinusEq(SectionKey):
+class MinusEq(HistoryContainer):
 
     def __init__(self, value, source):
+        super(MinusEq, self).__init__()
         self.value = value
         self.source = source
-        self.history = []
-
 
     def apply(self, other):
         subvalues = [
@@ -191,6 +199,8 @@ class MinusEq(SectionKey):
             if v not in self.value.split('\n')
         ]
         other.value = "\n".join(subvalues)
+        self.addToHistory("REMOVE", self.value, self.source)
+        other.merge_history(self)
         return other
 
 
