@@ -1853,7 +1853,7 @@ def _open(base, filename, seen, dl_options, override, downloaded):
 
     if is_root_config_file:
         final_result = {}
-        for downloded_file in downloaded_files:
+        for downloded_file in reversed(downloaded_files):
             _update(final_result, downloded_file)
         return final_result
 
