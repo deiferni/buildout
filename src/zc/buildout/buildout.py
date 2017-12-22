@@ -1771,6 +1771,14 @@ def _open(base, filename, seen, dl_options, override, downloaded):
     """Open a configuration file and return the result as a dictionary,
 
     Recursively open other files based on buildout options found.
+
+    base: directory or url base
+    filename: filename of the file to open
+    seen : list of already opened files
+    dl_options: dict of settings containing how to download stuff
+    override: dict of settings to override dl_options with. weird.
+    downloded: set of filenames that have been downloaded
+
     """
     print filename
 
