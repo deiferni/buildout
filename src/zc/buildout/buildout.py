@@ -106,30 +106,11 @@ class SectionKey(object):
         """Return the unannotated final value."""
         return self.value
 
-    def overrideValue(self, sectionkey):
-        self.value = sectionkey.value
-        # if sectionkey.history[-1].operation not in ['ADD', 'REMOVE']:
-        #     self.addToHistory("OVERRIDE", sectionkey.value, sectionkey.source)
-
         return sectionkey
 
     def setDirectory(self, value):
         self.value = value
         self.addToHistory("DIRECTORY", value, self.source)
-
-    def addToValue(self, added, source):
-        subvalues = self.value.split('\n') + added.split('\n')
-        self.value = "\n".join(subvalues)
-        self.addToHistory("ADD", added, source)
-
-    def removeFromValue(self, removed, source):
-        subvalues = [
-            v
-            for v in self.value.split('\n')
-            if v not in removed.split('\n')
-        ]
-        self.value = "\n".join(subvalues)
-        self.addToHistory("REMOVE", removed, source)
 
     def addToHistory(self, operation, value, source):
         item = HistoryItem(operation, value, source)
@@ -176,11 +157,6 @@ class SectionKey(object):
             if line.strip():
                 print_(line)
 
-    def apply(self, other):
-        subvalues = other.value.split('\n') + self.value.split('\n')
-        other.value = "\n".join(subvalues)
-        return other
-
     def __repr__(self):
         return "<SectionKey value=%s source=%s>" % (
             " ".join(self.value.split('\n')), self.source)
@@ -193,17 +169,11 @@ class PlusEq(SectionKey):
         self.source = source
         self.history = []
 
-    def unannotate(self):
-        """Return the unannotated final value."""
-        return self.value
 
     def apply(self, other):
         subvalues = other.value.split('\n') + self.value.split('\n')
         other.value = "\n".join(subvalues)
         return other
-
-    def overrideValue(self, sectionkey):
-        return sectionkey
 
 
 class MinusEq(SectionKey):
@@ -213,9 +183,6 @@ class MinusEq(SectionKey):
         self.source = source
         self.history = []
 
-    def unannotate(self):
-        """Return the unannotated final value."""
-        return self.value
 
     def apply(self, other):
         subvalues = [
@@ -225,9 +192,6 @@ class MinusEq(SectionKey):
         ]
         other.value = "\n".join(subvalues)
         return other
-
-    def overrideValue(self, sectionkey):
-        return sectionkey
 
 
 class HistoryItem(object):
