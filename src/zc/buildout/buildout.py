@@ -1817,7 +1817,7 @@ def _open(base, filename, seen, dl_options, override, downloaded):
             os.remove(downloaded_filename)
         raise zc.buildout.UserError("Recursive file include", seen, filename)
 
-    root_config_file = not seen
+    is_root_config_file = len(seen) == 0
     seen.append(filename)
 
     filename_for_logging = filename
@@ -1837,35 +1837,27 @@ def _open(base, filename, seen, dl_options, override, downloaded):
             'No-longer supported "extended-by" option found in %s.' %
             filename)
 
-    if root_config_file:
+    if is_root_config_file:
         _update_dl_options(dl_options, options)
-
-    eresults = []
-
     extends = options.pop('extends', None)
+
+    downloaded_files = []
     if extends:
         extends = extends.split()
 
-        eresults.extend(
-                         _open(
-                             base,
-                             fname,
-                             seen,
-                             dl_options,
-                             override,
-                             downloaded
-                             )
-                         )
-    eresults.append(result)
-
         for fname in extends:
-            result = _update(
-                result,
-                _open(base, fname, seen, dl_options, override, downloaded))
+            more_files = _open(base, fname, seen, dl_options, override, downloaded)
+            downloaded_files.extend(more_files)
 
-    result = _annotate(result, filename)
+    downloaded_files.append(_annotate(result, filename))
 
-    return result
+    if is_root_config_file:
+        final_result = {}
+        for downloded_file in downloaded_files:
+            _update(final_result, downloded_file)
+        return final_result
+
+    return downloaded_files
 
 
 ignore_directories = '.svn', 'CVS', '__pycache__'
@@ -1937,7 +1929,7 @@ def _update_section(s1, s2):
     # in section 2 overriding those in section 1. If there are += or -=
     # operators in section 2, process these to add or substract items (delimited
     # by newlines) from the preexisting values.
-    s2 = copy.deepcopy(s2) # avoid mutating the second argument, which is unexpected
+    # s2 = copy.deepcopy(s2) # avoid mutating the second argument, which is unexpected
     # Sort on key, then on the addition or substraction operator (+ comes first)
     # for k, v in sorted(s2.items(), key=lambda x: (x[0].rstrip(' +'), x[0][-1])):
 
@@ -1977,7 +1969,10 @@ def _update(d1, d2):
         if section in d1:
             d1[section] = _update_section(d1[section], d2[section])
         else:
-            d1[section] = d2[section]
+            try:
+                d1[section] = d2[section]
+            except TypeError:
+                import pudb; pudb.set_trace()  # noqa
     return d1
 
 def _recipe(options):
