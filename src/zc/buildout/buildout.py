@@ -90,6 +90,7 @@ def _annotate_section(section, source):
 
 
 class BaseKey(object):
+    """Base key, contains value and history."""
 
     def __init__(self, value, source):
         self._history = []
@@ -102,6 +103,27 @@ class BaseKey(object):
 
     def merge_history(self, other):
         self._history.extend(other._history)
+
+    def override_value(self, value, source):
+        self.addToHistory("OVERRIDE", value, source)
+
+        self._value = value
+
+    def add_to_value(self, value, source):
+        self.addToHistory("ADD", value, source)
+
+        subvalues = value.split('\n') + self._value.split('\n')
+        self._value = "\n".join(subvalues)
+
+    def remove_from_value(self, value, source):
+        self.addToHistory("REMOVE", value, source)
+
+        subvalues = [
+            v
+            for v in self._value.split('\n')
+            if v not in value.split('\n')
+        ]
+        self._value = "\n".join(subvalues)
 
 
 class SectionKey(BaseKey):
@@ -169,8 +191,7 @@ class SectionKey(BaseKey):
                 print_(line)
 
     def apply(self, other):
-        other._value = self._value
-        self.addToHistory("OVERRIDE", self._value, self.source)
+        other.override_value(self._value, self._source)
         other.merge_history(self)
         return other
 
@@ -182,24 +203,16 @@ class SectionKey(BaseKey):
 class PlusEq(BaseKey):
 
     def apply(self, other):
-        subvalues = other._value.split('\n') + self._value.split('\n')
-        other._value = "\n".join(subvalues)
+        other.add_to_value(self._value, self._source)
         other.merge_history(self)
-        other.addToHistory("ADD", self._value, self._source)
         return other
 
 
 class MinusEq(BaseKey):
 
     def apply(self, other):
-        subvalues = [
-            v
-            for v in other._value.split('\n')
-            if v not in self._value.split('\n')
-        ]
-        other._value = "\n".join(subvalues)
+        other.remove_from_value(self._value, self._source)
         other.merge_history(self)
-        other.addToHistory("REMOVE", self._value, self._source)
         return other
 
 
