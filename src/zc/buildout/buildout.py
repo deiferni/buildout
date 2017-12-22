@@ -112,7 +112,7 @@ class BaseKey(object):
     def add_to_value(self, value, source):
         self.addToHistory("ADD", value, source)
 
-        subvalues = value.split('\n') + self._value.split('\n')
+        subvalues = self._value.split('\n') + value.split('\n')
         self._value = "\n".join(subvalues)
 
     def remove_from_value(self, value, source):
