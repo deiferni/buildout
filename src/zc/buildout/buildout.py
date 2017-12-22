@@ -80,10 +80,10 @@ def _annotate_section(section, source):
     for key in section:
         if key.endswith('+'):
             real_key = key.rstrip(' +')
-            new_dict[real_key] = PlusEq(section[key], source)
+            new_dict.setdefault(real_key, []).append(PlusEq(section[key], source))
         elif key.endswith('-'):
             real_key = key.rstrip(' -')
-            new_dict[real_key] = MinusEq(section[key], source)
+            new_dict.setdefault(real_key, []).append(MinusEq(section[key], source))
         else:
             new_dict[key] = SectionKey(section[key], source)
     return new_dict
@@ -289,7 +289,10 @@ def _print_annotate(data, verbose, chosen_sections, basedir):
 
 def _unannotate_section(section):
     for key in section:
-        section[key] = section[key].unannotate()
+        val = section[key]
+        if hasattr(val, '__iter__'):
+            val = val[0]
+        section[key] = val.unannotate()
     return section
 
 
@@ -1919,7 +1922,12 @@ def _update_section_keys(s1, s2):
     for key, v2 in s2.items():
         if key in s1:
             v1 = s1[key]
-            s1[key] = v2.apply(v1)
+            if hasattr(v2, '__iter__'):
+                for val in v2:
+                    v1 = val.apply(v1)
+                s1[key] = v1
+            else:
+                s1[key] = v2.apply(v1)
         else:
             s1[key] = v2
 
