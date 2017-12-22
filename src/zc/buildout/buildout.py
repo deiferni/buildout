@@ -1926,34 +1926,6 @@ def _update_dl_options(dl_options, config):
 
 
 def _update_section(s1, s2):
-    # Base section 2 on section 1; section 1 is copied, with key-value pairs
-    # in section 2 overriding those in section 1. If there are += or -=
-    # operators in section 2, process these to add or substract items (delimited
-    # by newlines) from the preexisting values.
-    # s2 = copy.deepcopy(s2) # avoid mutating the second argument, which is unexpected
-    # Sort on key, then on the addition or substraction operator (+ comes first)
-    # for k, v in sorted(s2.items(), key=lambda x: (x[0].rstrip(' +'), x[0][-1])):
-
-    #     if 'foo' in k:
-    #         import pudb; pudb.set_trace()  # noqa
-
-    #     if k.endswith('+'):
-    #         key = k.rstrip(' +')
-    #         implicit_value = SectionKey("", "IMPLICIT_VALUE")
-    #         # Find v1 in s2 first; it may have been defined locally too.
-    #         section_key = s2.get(key, s1.get(key, implicit_value))
-    #         section_key.addToValue(v.value, v.source)
-    #         s2[key] = section_key
-    #         del s2[k]
-    #     elif k.endswith('-'):
-    #         key = k.rstrip(' -')
-    #         implicit_value = SectionKey("", "IMPLICIT_VALUE")
-    #         # Find v1 in s2 first; it may have been set by a += operation first
-    #         section_key = s2.get(key, s1.get(key, implicit_value))
-    #         section_key.removeFromValue(v.value, v.source)
-    #         s2[key] = section_key
-    #         del s2[k]
-
     _update_section_keys(s1, s2)
     return s1
 
