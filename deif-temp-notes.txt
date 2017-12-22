@@ -1,0 +1,12 @@
+create a virtualenv without setuptools et alteri:
+>> virtualenv --no-setuptools --no-wheel .venv
+
+activate the env
+>> source .venv/bin/activate
+
+run dev installation script
+>> python dev.py
+
+install coverage for tests
+>> pip install coverage
+

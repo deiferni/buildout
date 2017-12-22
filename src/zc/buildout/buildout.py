@@ -1841,23 +1841,24 @@ def _open(base, filename, seen, dl_options, override, downloaded):
         _update_dl_options(dl_options, options)
     extends = options.pop('extends', None)
 
+    # recursively process extends
     downloaded_files = []
     if extends:
         extends = extends.split()
-
         for fname in extends:
             more_files = _open(base, fname, seen, dl_options, override, downloaded)
             downloaded_files.extend(more_files)
 
+    # finally append our current result, annotated
     downloaded_files.append(_annotate(result, filename))
 
-    if is_root_config_file:
-        final_result = {}
-        for downloded_file in reversed(downloaded_files):
-            _update(final_result, downloded_file)
-        return final_result
+    if not is_root_config_file:
+        return downloaded_files
 
-    return downloaded_files
+    final_result = {}
+    for downloded_file in reversed(downloaded_files):
+        _update(final_result, downloded_file)
+    return final_result
 
 
 ignore_directories = '.svn', 'CVS', '__pycache__'
