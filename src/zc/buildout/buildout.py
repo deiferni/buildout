@@ -165,6 +165,12 @@ class SectionKey(HistoryContainer):
             if line.strip():
                 print_(line)
 
+    def apply(self, other):
+        other.value = self.value
+        self.addToHistory("OVERRIDE", self.value, self.source)
+        other.merge_history(self)
+        return other
+
     def __repr__(self):
         return "<SectionKey value=%s source=%s>" % (
             " ".join(self.value.split('\n')), self.source)
