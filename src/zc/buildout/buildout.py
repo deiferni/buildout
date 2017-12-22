@@ -76,25 +76,42 @@ class MissingSection(zc.buildout.UserError, KeyError):
 
 
 def _annotate_section(section, source):
+    new_dict = {}
     for key in section:
-        section[key] = SectionKey(section[key], source)
-    return section
+        if key.endswith('+'):
+            real_key = key.rstrip(' +')
+            new_dict[real_key] = PlusEq(section[key], source)
+        elif key.endswith('-'):
+            real_key = key.rstrip(' -')
+            new_dict[real_key] = MinusEq(section[key], source)
+        else:
+            new_dict[key] = SectionKey(section[key], source)
+    return new_dict
 
 
 class SectionKey(object):
     def __init__(self, value, source):
+        self.source = source
         self.history = []
         self.value = value
+        self.initial_value = value
+        self.ops = []
         self.addToHistory("SET", value, source)
 
-    @property
-    def source(self):
-        return self.history[-1].source
+    # @property
+    # def source(self):
+    #     return self.history[-1].source
+
+    def unannotate(self):
+        """Return the unannotated final value."""
+        return self.value
 
     def overrideValue(self, sectionkey):
         self.value = sectionkey.value
-        if sectionkey.history[-1].operation not in ['ADD', 'REMOVE']:
-            self.addToHistory("OVERRIDE", sectionkey.value, sectionkey.source)
+        # if sectionkey.history[-1].operation not in ['ADD', 'REMOVE']:
+        #     self.addToHistory("OVERRIDE", sectionkey.value, sectionkey.source)
+
+        return sectionkey
 
     def setDirectory(self, value):
         self.value = value
@@ -159,9 +176,58 @@ class SectionKey(object):
             if line.strip():
                 print_(line)
 
+    def apply(self, other):
+        subvalues = other.value.split('\n') + self.value.split('\n')
+        other.value = "\n".join(subvalues)
+        return other
+
     def __repr__(self):
         return "<SectionKey value=%s source=%s>" % (
             " ".join(self.value.split('\n')), self.source)
+
+
+class PlusEq(SectionKey):
+
+    def __init__(self, value, source):
+        self.value = value
+        self.source = source
+        self.history = []
+
+    def unannotate(self):
+        """Return the unannotated final value."""
+        return self.value
+
+    def apply(self, other):
+        subvalues = other.value.split('\n') + self.value.split('\n')
+        other.value = "\n".join(subvalues)
+        return other
+
+    def overrideValue(self, sectionkey):
+        return sectionkey
+
+
+class MinusEq(SectionKey):
+
+    def __init__(self, value, source):
+        self.value = value
+        self.source = source
+        self.history = []
+
+    def unannotate(self):
+        """Return the unannotated final value."""
+        return self.value
+
+    def apply(self, other):
+        subvalues = [
+            v
+            for v in other.value.split('\n')
+            if v not in self.value.split('\n')
+        ]
+        other.value = "\n".join(subvalues)
+        return other
+
+    def overrideValue(self, sectionkey):
+        return sectionkey
 
 
 class HistoryItem(object):
@@ -237,7 +303,7 @@ def _print_annotate(data, verbose, chosen_sections, basedir):
 
 def _unannotate_section(section):
     for key in section:
-        section[key] = section[key].value
+        section[key] = section[key].unannotate()
     return section
 
 
@@ -1706,6 +1772,8 @@ def _open(base, filename, seen, dl_options, override, downloaded):
 
     Recursively open other files based on buildout options found.
     """
+    print filename
+
     _update_section(dl_options, override)
     dl_options_copy = copy.deepcopy(dl_options)
     _dl_options = _unannotate_section(dl_options_copy)
@@ -1756,27 +1824,39 @@ def _open(base, filename, seen, dl_options, override, downloaded):
         os.remove(downloaded_filename)
 
     options = result.get('buildout', {})
-    extends = options.pop('extends', None)
     if 'extended-by' in options:
         raise zc.buildout.UserError(
             'No-longer supported "extended-by" option found in %s.' %
             filename)
 
-    result = _annotate(result, filename)
+    if root_config_file:
+        _update_dl_options(dl_options, options)
 
-    if root_config_file and 'buildout' in result:
-        dl_options = _update_section(dl_options, result['buildout'])
+    eresults = []
 
+    extends = options.pop('extends', None)
     if extends:
         extends = extends.split()
-        eresult = _open(base, extends.pop(0), seen, dl_options, override,
-                        downloaded)
-        for fname in extends:
-            _update(eresult, _open(base, fname, seen, dl_options, override,
-                    downloaded))
-        result = _update(eresult, result)
 
-    seen.pop()
+        eresults.extend(
+                         _open(
+                             base,
+                             fname,
+                             seen,
+                             dl_options,
+                             override,
+                             downloaded
+                             )
+                         )
+    eresults.append(result)
+
+        for fname in extends:
+            result = _update(
+                result,
+                _open(base, fname, seen, dl_options, override, downloaded))
+
+    result = _annotate(result, filename)
+
     return result
 
 
@@ -1832,6 +1912,18 @@ def _dists_sig(dists):
             result.append(os.path.basename(location))
     return result
 
+def _update_dl_options(dl_options, config):
+    """Update download options from a buildout config, removing them
+    from the original config.
+
+    dl options are kinda meta and should never undergo the AST phase where
+    += and -= are handled.
+    """
+    for key in dl_options:
+        if key in config:
+            dl_options[key] = config.pop(key)
+
+
 def _update_section(s1, s2):
     # Base section 2 on section 1; section 1 is copied, with key-value pairs
     # in section 2 overriding those in section 1. If there are += or -=
@@ -1839,32 +1931,36 @@ def _update_section(s1, s2):
     # by newlines) from the preexisting values.
     s2 = copy.deepcopy(s2) # avoid mutating the second argument, which is unexpected
     # Sort on key, then on the addition or substraction operator (+ comes first)
-    for k, v in sorted(s2.items(), key=lambda x: (x[0].rstrip(' +'), x[0][-1])):
-        if k.endswith('+'):
-            key = k.rstrip(' +')
-            implicit_value = SectionKey("", "IMPLICIT_VALUE")
-            # Find v1 in s2 first; it may have been defined locally too.
-            section_key = s2.get(key, s1.get(key, implicit_value))
-            section_key.addToValue(v.value, v.source)
-            s2[key] = section_key
-            del s2[k]
-        elif k.endswith('-'):
-            key = k.rstrip(' -')
-            implicit_value = SectionKey("", "IMPLICIT_VALUE")
-            # Find v1 in s2 first; it may have been set by a += operation first
-            section_key = s2.get(key, s1.get(key, implicit_value))
-            section_key.removeFromValue(v.value, v.source)
-            s2[key] = section_key
-            del s2[k]
+    # for k, v in sorted(s2.items(), key=lambda x: (x[0].rstrip(' +'), x[0][-1])):
 
-    _update_verbose(s1, s2)
+    #     if 'foo' in k:
+    #         import pudb; pudb.set_trace()  # noqa
+
+    #     if k.endswith('+'):
+    #         key = k.rstrip(' +')
+    #         implicit_value = SectionKey("", "IMPLICIT_VALUE")
+    #         # Find v1 in s2 first; it may have been defined locally too.
+    #         section_key = s2.get(key, s1.get(key, implicit_value))
+    #         section_key.addToValue(v.value, v.source)
+    #         s2[key] = section_key
+    #         del s2[k]
+    #     elif k.endswith('-'):
+    #         key = k.rstrip(' -')
+    #         implicit_value = SectionKey("", "IMPLICIT_VALUE")
+    #         # Find v1 in s2 first; it may have been set by a += operation first
+    #         section_key = s2.get(key, s1.get(key, implicit_value))
+    #         section_key.removeFromValue(v.value, v.source)
+    #         s2[key] = section_key
+    #         del s2[k]
+
+    _update_section_keys(s1, s2)
     return s1
 
-def _update_verbose(s1, s2):
+def _update_section_keys(s1, s2):
     for key, v2 in s2.items():
         if key in s1:
             v1 = s1[key]
-            v1.overrideValue(v2)
+            s1[key] = v1.apply(v2)
         else:
             s1[key] = v2
 

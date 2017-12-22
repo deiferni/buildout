@@ -3141,6 +3141,48 @@ def test_buildout_doesnt_keep_adding_itself_to_versions():
     True
     """
 
+def increment_buildout_with_multiple_extended_without_base_equals():
+    r"""
+
+    >>> write('buildout.cfg',
+    ... '''
+    ... [buildout]
+    ... extends = base1.cfg
+    ...           base2.cfg
+    ... parts += foo
+    ... [foo]
+    ... recipe = zc.buildout:debug
+    ... [base1]
+    ... recipe = zc.buildout:debug
+    ... [base2]
+    ... recipe = zc.buildout:debug
+    ... ''')
+
+    >>> write('base1.cfg', '''
+    ... [buildout]
+    ... extends = base3.cfg
+    ... parts += base1
+    ... ''')
+
+    >>> write('base2.cfg', '''
+    ... [buildout]
+    ... extends = base3.cfg
+    ... parts += base2
+    ... ''')
+
+    >>> write('base3.cfg', '''
+    ... [buildout]
+    ... ''')
+
+    >>> print_(system(buildout), end='')
+    Installing base2.
+      recipe='zc.buildout:debug'
+    Installing foo.
+      recipe='zc.buildout:debug'
+    Installing base1.
+      recipe='zc.buildout:debug'
+    """
+
 if sys.platform == 'win32':
     del buildout_honors_umask # umask on dohs is academic
 
@@ -3229,7 +3271,7 @@ def create_sample_eggs(test, executable=sys.executable):
             " zip_safe=True, version='0.5')\n"
             )
         zc.buildout.testing.sdist(tmp, dest)
-        # rename file to lower case 
+        # rename file to lower case
         # to test issues between file and package name
         curdir = os.getcwd()
         os.chdir(dest)
